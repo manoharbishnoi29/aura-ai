@@ -199,7 +199,7 @@ const MODES={
 
 const defState=()=>({name:'',lang:'hi-IN',speak:false,web:false,mems:[],chats:[],cur:null,mode:'chat'});
 let S=defState(),UID=null;
-const CHAT_MODEL='gemini-2.5-flash',IMG_MODEL='gemini-2.5-flash-image';
+const CHAT_MODEL='gemini-3.8-flash',IMG_MODEL='gemini-3.1-flash-image';
 function load(uid){
   try{const s=JSON.parse(localStorage.getItem('aura_state_'+uid)||'null');if(s)return Object.assign(defState(),s);}catch(e){}
   return defState();
