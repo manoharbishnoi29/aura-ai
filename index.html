@@ -83,6 +83,10 @@ a.vt small{display:block;color:var(--mut);margin-top:2px}
 .or{display:flex;align-items:center;gap:10px;color:var(--mut);font-size:13px;margin:16px 0}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 a.lk{color:var(--b);cursor:pointer;text-decoration:underline}
+#ann{margin:0 12px 6px;padding:9px 12px;background:#fff6dc;border-radius:12px;font-size:14px;align-items:center;gap:8px}
+#ann span{flex:1}#ann button{color:var(--mut)}
+#blocked{position:fixed;inset:0;z-index:60;background:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center}
+#blocked.show{display:flex}
 </style>
 </head>
 <body>
@@ -110,6 +114,7 @@ a.lk{color:var(--b);cursor:pointer;text-decoration:underline}
     <div class="title">✦ Aura</div>
     <button class="ib" id="newBtn">✎</button>
   </header>
+  <div id="ann" style="display:none"><span></span><button>✕</button></div>
   <div class="chips" id="modes"></div>
   <div id="msgs"></div>
   <div id="pend"></div>
@@ -122,11 +127,14 @@ a.lk{color:var(--b);cursor:pointer;text-decoration:underline}
   <input type="file" id="file" accept="application/pdf,image/*" multiple hidden>
 </div>
 
+<div id="blocked"><div style="font-size:54px">🚫</div><h2>Account block hai</h2><p class="note">Aapka account admin ne block kar diya hai.</p><button class="btn g" id="blkOut" style="max-width:260px">Log out</button></div>
+
 <div class="ov" id="ov"></div>
 <div class="drawer" id="drawer">
   <h1>Aura</h1>
   <button class="mi" data-go="mem">🗂️ Saved info (Memory)</button>
   <button class="mi" data-go="vid">🎬 Video tools</button>
+  <a class="mi" id="adminLink" href="admin.html" style="display:none;text-decoration:none;color:inherit">🛠️ Admin panel</a>
   <button class="mi" data-go="set">⚙️ Settings</button>
   <h5>Recent chats</h5>
   <div id="chatlist"></div>
@@ -162,15 +170,19 @@ a.lk{color:var(--b);cursor:pointer;text-decoration:underline}
 
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {getFirestore,doc,getDoc,setDoc,updateDoc,onSnapshot,increment,serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,GoogleAuthProvider,signInWithPopup,sendPasswordResetEmail,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
-/* ====== YAHAN APNI 2 CHEEZEN BHARNI HAIN (baad ke steps me) ====== */
+/* ====== Firebase config bhari hui hai. Sirf WORKER_URL baaki hai ====== */
 const FIREBASE_CONFIG={
-  apiKey:"PASTE_FIREBASE_API_KEY",
-  authDomain:"PASTE_PROJECT_ID.firebaseapp.com",
-  projectId:"PASTE_PROJECT_ID",
-  appId:"PASTE_APP_ID"
+  apiKey:"AIzaSyAGJ8Y_PVdF9E5_iUhvvjCaNMR80EZNUB4",
+  authDomain:"aura-ai-5ad5e.firebaseapp.com",
+  projectId:"aura-ai-5ad5e",
+  storageBucket:"aura-ai-5ad5e.firebasestorage.app",
+  messagingSenderId:"769462264217",
+  appId:"1:769462264217:web:8e764eb5a4a04fdbf67308"
 };
+const ADMIN_EMAIL="officialmanoharbishnoi@gmail.com";
 const WORKER_URL="PASTE_WORKER_URL"; // jaise https://aura-api.xxxx.workers.dev
 /* ================================================================= */
 const $=s=>document.querySelector(s);
@@ -276,10 +288,34 @@ function renderMem(){
 }
 $('#memAdd').onclick=()=>{const v=$('#memIn').value.trim();if(!v)return;S.mems.push(v);$('#memIn').value='';save();renderMem();};
 
+/* ---------- user sync (Firestore) ---------- */
+let unsubs=[],BLOCKED=false,db=null;
+function stopSync(){
+  unsubs.forEach(f=>f());unsubs=[];BLOCKED=false;
+  $('#blocked').classList.remove('show');$('#ann').style.display='none';$('#adminLink').style.display='none';
+}
+async function startUserSync(u){
+  stopSync();
+  $('#adminLink').style.display=(u.email===ADMIN_EMAIL)?'flex':'none';
+  const ref=doc(db,'users',u.uid);
+  try{
+    const snap=await getDoc(ref);
+    if(!snap.exists())await setDoc(ref,{email:u.email||'',name:S.name,createdAt:serverTimestamp(),lastSeen:serverTimestamp(),msgCount:0,blocked:false});
+    else await updateDoc(ref,{lastSeen:serverTimestamp(),email:u.email||'',name:S.name});
+  }catch(e){}
+  unsubs.push(onSnapshot(ref,sn=>{const d=sn.data();BLOCKED=!!(d&&d.blocked);$('#blocked').classList.toggle('show',BLOCKED);},()=>{}));
+  unsubs.push(onSnapshot(doc(db,'config','announcement'),sn=>{
+    const d=sn.data(),el=$('#ann');
+    if(d&&d.active&&d.text){el.firstElementChild.textContent='📢 '+d.text;el.style.display='flex';}else el.style.display='none';
+  },()=>{}));
+}
+$('#ann button').onclick=()=>{$('#ann').style.display='none';};
+$('#blkOut').onclick=()=>{signOut(auth);};
+
 /* ---------- login ---------- */
 const cfgOk=!FIREBASE_CONFIG.apiKey.startsWith('PASTE');
 let auth=null;
-if(cfgOk)auth=getAuth(initializeApp(FIREBASE_CONFIG));
+if(cfgOk){const fbApp=initializeApp(FIREBASE_CONFIG);auth=getAuth(fbApp);db=getFirestore(fbApp);}
 let signup=false;
 const lerr=t=>{$('#lgErr').textContent=t||'';};
 function fbMsg(e){
@@ -307,9 +343,9 @@ if(auth){
       UID=u.uid;S=load(u.uid);
       S.name=u.displayName||(u.email||'').split('@')[0]||'friend';
       if(!S.chats.length)newChat();else if(!curChat())S.cur=S.chats[0].id;
-      save();$('#login').classList.remove('show');renderAll();
+      save();$('#login').classList.remove('show');renderAll();startUserSync(u);
     }else{
-      UID=null;S=defState();$('#pwIn').value='';$('#login').classList.add('show');renderAll();
+      stopSync();UID=null;S=defState();$('#pwIn').value='';$('#login').classList.add('show');renderAll();
     }
   });
 }else{
@@ -406,6 +442,7 @@ async function send(){
   const text=$('#inp').value.trim();
   if(!text&&!pending.length)return;
   if(!auth||!auth.currentUser){toast('Pehle login karo');return;}
+  if(BLOCKED){toast('Aapka account block hai');return;}
   if(!curChat())newChat();
   const c=curChat();
   const parts=pending.map(p=>({inlineData:{mimeType:p.mime,data:p.data}}));
@@ -417,6 +454,7 @@ async function send(){
   renderMsgs();
   const box=$('#msgs');const ld=document.createElement('div');ld.className='m a';ld.innerHTML='<div class="bub dots"><span></span><span></span><span></span></div>';box.appendChild(ld);box.scrollTop=box.scrollHeight;
   busy=true;$('#send').textContent='…';
+  updateDoc(doc(db,'users',UID),{msgCount:increment(1),lastSeen:serverTimestamp()}).catch(()=>{});
   const out={role:'model',text:'',api:[],imgs:[],src:[]};
   try{
     if(S.mode==='image'){
