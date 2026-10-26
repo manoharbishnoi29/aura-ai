@@ -1,8 +1,9 @@
 // Aura AI backend (Cloudflare Worker)
-// Secrets/Variables jo Cloudflare me daalne hain:
-//   GEMINI_KEY       -> Gemini API key (Secret)
-//   FIREBASE_API_KEY -> Firebase Web API key (Variable)
-//   ALLOWED_ORIGIN   -> jaise https://username.github.io (Variable, bina / ke)
+// Cloudflare me ye 4 cheezein daalni hain (Settings -> Variables and Secrets):
+//   GEMINI_KEY          -> Gemini API key            (type: Secret)
+//   FIREBASE_API_KEY    -> Firebase Web API key      (type: Text)
+//   FIREBASE_PROJECT_ID -> aura-ai-5ad5e             (type: Text)
+//   ALLOWED_ORIGIN      -> https://USERNAME.github.io (type: Text, bina / ke)
 
 export default {
   async fetch(req, env) {
@@ -34,11 +35,24 @@ export default {
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token }) }
     );
     if (!chk.ok) return json({ error: { message: 'Login expire ho gaya, dobara login karo' } }, 401);
+    const uid = ((await chk.json()).users || [])[0]?.localId;
+    if (!uid) return json({ error: { message: 'User nahi mila' } }, 401);
 
-    // 2) Gemini ko request bhejo (key yahin chhupi hai)
+    // 2) Block check (Firestore users/{uid}.blocked)
+    const fs = await fetch(
+      'https://firestore.googleapis.com/v1/projects/' + env.FIREBASE_PROJECT_ID + '/databases/(default)/documents/users/' + uid,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (fs.ok) {
+      const d = await fs.json();
+      if (d.fields && d.fields.blocked && d.fields.blocked.booleanValue === true) {
+        return json({ error: { message: 'Aapka account block hai' } }, 403);
+      }
+    }
+
+    // 3) Gemini ko request bhejo (key yahin chhupi hai)
     const body = await req.text();
     if (body.length > 25 * 1024 * 1024) return json({ error: { message: 'File bahut badi hai' } }, 413);
-
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta' + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_KEY },
