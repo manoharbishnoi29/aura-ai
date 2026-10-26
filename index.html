@@ -183,7 +183,7 @@ const FIREBASE_CONFIG={
   appId:"1:769462264217:web:8e764eb5a4a04fdbf67308"
 };
 const ADMIN_EMAIL="officialmanoharbishnoi@gmail.com";
-const WORKER_URL="PASTE_WORKER_URL"; // jaise https://aura-api.xxxx.workers.dev
+const WORKER_URL="https://aura-api-v527.onrender.com";
 /* ================================================================= */
 const $=s=>document.querySelector(s);
 const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -499,7 +499,7 @@ async function send(){
       out.api=[{text:out.text||'...'}];
     }
   }catch(e){
-    out.text='⚠️ '+e.message+'\n\nSettings me API key / model name check karo.';
+    out.text='⚠️ '+e.message+'\n\nAgar pehli baar chala hai to server jaag raha hoga, 1 minute baad dobara try karo.';
     out.api=[{text:'error'}];
     c.msgs.pop();renderMsgs();
     busy=false;$('#send').textContent='➤';
