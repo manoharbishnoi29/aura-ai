@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aura AI Admin</title>
+<style>
+:root{--fg:#0f1226;--mut:#6b7090;--line:#e6e8f2;--card:#f4f5fb;--p:#5b4ee8;--p2:#8a3ffc;--b:#1d9bf0}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--fg);background:#fff;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 40px;max-width:820px;margin:0 auto}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+h1{font-size:24px;margin:0;background:linear-gradient(90deg,var(--p),var(--b));-webkit-background-clip:text;background-clip:text;color:transparent}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.top .sp{flex:1}
+.sm{padding:8px 12px;border-radius:12px;background:var(--card);font-size:14px}
+.btn{display:block;width:100%;padding:13px;border-radius:26px;background:linear-gradient(90deg,var(--p),var(--p2));color:#fff;font-weight:600;text-align:center;margin-top:10px}
+.btn.g{background:var(--card);color:var(--fg)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 16px}
+.st{background:var(--card);border-radius:16px;padding:14px}
+.st b{display:block;font-size:26px}
+.st span{color:var(--mut);font-size:13px}
+h3{margin:18px 0 8px}
+input.f,textarea.f{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;font:inherit;font-size:15px;color:var(--fg)}
+.u{background:var(--card);border-radius:14px;padding:12px;margin:8px 0;display:flex;gap:10px;align-items:center}
+.u .i{flex:1;min-width:0}
+.u .e{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.u small{color:var(--mut);display:block;font-size:12.5px;margin-top:2px}
+.bk{padding:8px 12px;border-radius:12px;font-size:13.5px;background:#ffe3e3;color:#c22;flex:none}
+.bk.un{background:#dff7e5;color:#177a35}
+.tag{display:inline-block;font-size:11px;background:#ffd9d9;color:#c22;border-radius:6px;padding:1px 6px;margin-left:6px}
+#gate{text-align:center;margin-top:20vh}
+#app{display:none}
+.note{color:var(--mut);font-size:13px;line-height:1.4}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1 style="font-size:30px">Aura AI Admin</h1>
+  <p class="note">Sirf admin Google account se login hota hai.</p>
+  <button class="btn" id="gLogin" style="max-width:300px;margin:14px auto">Continue with Google</button>
+  <p class="note" id="gErr" style="color:#d33"></p>
+</div>
+
+<div id="app">
+  <div class="top"><h1>🛠️ Admin</h1><span class="sp"></span><a class="sm" href="index.html" style="text-decoration:none;color:inherit">← App</a><button class="sm" id="out">Log out</button></div>
+
+  <div class="grid">
+    <div class="st"><b id="sUsers">0</b><span>Total users</span></div>
+    <div class="st"><b id="sMsgs">0</b><span>Total messages</span></div>
+    <div class="st"><b id="sActive">0</b><span>Active (24 ghante)</span></div>
+    <div class="st"><b id="sBlocked">0</b><span>Blocked</span></div>
+  </div>
+
+  <h3>📢 Announcement</h3>
+  <textarea class="f" id="annText" rows="2" placeholder="Sabhi users ko dikhne wala message likho"></textarea>
+  <button class="btn" id="annPub">Publish</button>
+  <button class="btn g" id="annOff">Hata do</button>
+
+  <h3>👥 Users</h3>
+  <input class="f" id="search" placeholder="Email ya naam se dhundho">
+  <div id="list"></div>
+</div>
+
+<script type="module">
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {getAuth,onAuthStateChanged,signInWithPopup,GoogleAuthProvider,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getFirestore,collection,doc,onSnapshot,updateDoc,setDoc,getDoc,serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyAGJ8Y_PVdF9E5_iUhvvjCaNMR80EZNUB4",
+  authDomain:"aura-ai-5ad5e.firebaseapp.com",
+  projectId:"aura-ai-5ad5e",
+  storageBucket:"aura-ai-5ad5e.firebasestorage.app",
+  messagingSenderId:"769462264217",
+  appId:"1:769462264217:web:8e764eb5a4a04fdbf67308"
+};
+const ADMIN_EMAIL="officialmanoharbishnoi@gmail.com";
+
+const $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const app=initializeApp(FIREBASE_CONFIG),auth=getAuth(app),db=getFirestore(app);
+let users=[],unsubs=[];
+
+$('#gLogin').onclick=async()=>{$('#gErr').textContent='';try{await signInWithPopup(auth,new GoogleAuthProvider());}catch(e){$('#gErr').textContent=e.message;}};
+$('#out').onclick=()=>signOut(auth);
+
+onAuthStateChanged(auth,u=>{
+  unsubs.forEach(f=>f());unsubs=[];
+  if(u&&u.email===ADMIN_EMAIL){
+    $('#gate').style.display='none';$('#app').style.display='block';start();
+  }else{
+    $('#app').style.display='none';$('#gate').style.display='block';
+    if(u){$('#gErr').textContent='Ye account admin nahi hai: '+(u.email||'');signOut(auth);}
+  }
+});
+
+function ts(v){try{return v&&v.toDate?v.toDate():null;}catch(e){return null;}}
+function fmt(d){return d?d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'-';}
+
+function start(){
+  unsubs.push(onSnapshot(collection(db,'users'),snap=>{
+    users=snap.docs.map(d=>({id:d.id,...d.data()}));
+    users.sort((a,b)=>(ts(b.createdAt)?.getTime()||0)-(ts(a.createdAt)?.getTime()||0));
+    render();
+  },e=>{$('#list').innerHTML='<p class="note">Users load nahi hue: '+esc(e.message)+'<br>Firestore rules publish kiye? Aur admin ne Google se login kiya?</p>';}));
+  getDoc(doc(db,'config','announcement')).then(s=>{if(s.exists())$('#annText').value=s.data().text||'';}).catch(()=>{});
+}
+
+function render(){
+  const now=Date.now();
+  $('#sUsers').textContent=users.length;
+  $('#sMsgs').textContent=users.reduce((a,u)=>a+(u.msgCount||0),0);
+  $('#sActive').textContent=users.filter(u=>{const d=ts(u.lastSeen);return d&&now-d.getTime()<864e5;}).length;
+  $('#sBlocked').textContent=users.filter(u=>u.blocked).length;
+  const q=$('#search').value.trim().toLowerCase();
+  const el=$('#list');el.innerHTML='';
+  users.filter(u=>!q||(u.email||'').toLowerCase().includes(q)||(u.name||'').toLowerCase().includes(q)).forEach(u=>{
+    const r=document.createElement('div');r.className='u';
+    r.innerHTML='<div class="i"><div class="e">'+esc(u.email||u.id)+(u.blocked?'<span class="tag">BLOCKED</span>':'')+'</div><small>'+esc(u.name||'')+' · '+(u.msgCount||0)+' messages</small><small>Joined: '+fmt(ts(u.createdAt))+' · Last seen: '+fmt(ts(u.lastSeen))+'</small></div>';
+    if(u.email!==ADMIN_EMAIL){
+      const b=document.createElement('button');b.className='bk'+(u.blocked?' un':'');b.textContent=u.blocked?'Unblock':'Block';
+      b.onclick=async()=>{
+        if(!u.blocked&&!confirm((u.email||'User')+' ko block karna hai?'))return;
+        try{await updateDoc(doc(db,'users',u.id),{blocked:!u.blocked});}catch(e){alert(e.message);}
+      };
+      r.appendChild(b);
+    }
+    el.appendChild(r);
+  });
+  if(!el.children.length)el.innerHTML='<p class="note">Koi user nahi mila.</p>';
+}
+$('#search').addEventListener('input',render);
+
+$('#annPub').onclick=async()=>{
+  const t=$('#annText').value.trim();if(!t)return alert('Pehle message likho');
+  try{await setDoc(doc(db,'config','announcement'),{text:t,active:true,updatedAt:serverTimestamp()});alert('Publish ho gaya ✅');}catch(e){alert(e.message);}
+};
+$('#annOff').onclick=async()=>{
+  try{await setDoc(doc(db,'config','announcement'),{text:$('#annText').value.trim(),active:false,updatedAt:serverTimestamp()});alert('Announcement hata diya ✅');}catch(e){alert(e.message);}
+};
+</script>
+</body>
+</html>
